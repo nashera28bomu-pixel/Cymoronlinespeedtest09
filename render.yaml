@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: cymor-football-live
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: PORT
+        value: 3000
+    autoDeploy: true
