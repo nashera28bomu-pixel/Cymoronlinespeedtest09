@@ -5,7 +5,7 @@
 const API = '/api';
 
 // ── STATE ──
-let state = {
+const state = {
   view: 'live',
   currentPage: 1,
   totalPages: 1,
@@ -16,32 +16,34 @@ let state = {
   currentMatch: null,
   currentServerIdx: 0,
   hls: null,
+  cache: new Map(), // 2-min cache for API responses
+  abortController: null,
 };
 
 // ── ELEMENT REFS ──
 const $ = id => document.getElementById(id);
-const matchesGrid    = $('matchesGrid');
-const leaguesGrid    = $('leaguesGrid');
+const matchesGrid = $('matchesGrid');
+const leaguesGrid = $('leaguesGrid');
 const matchesSection = $('matchesSection');
 const leaguesSection = $('leaguesSection');
-const sectionTitle   = $('sectionTitle');
-const matchCount     = $('matchCount');
-const pagination     = $('pagination');
-const searchInput    = $('searchInput');
-const streamModal    = $('streamModal');
-const videoPlayer    = $('videoPlayer');
-const serverList     = $('serverList');
-const matchMeta      = $('matchMeta');
+const sectionTitle = $('sectionTitle');
+const matchCount = $('matchCount');
+const pagination = $('pagination');
+const searchInput = $('searchInput');
+const streamModal = $('streamModal');
+const videoPlayer = $('videoPlayer');
+const serverList = $('serverList');
+const matchMeta = $('matchMeta');
 const modalMatchInfo = $('modalMatchInfo');
-const modalClose     = $('modalClose');
+const modalClose = $('modalClose');
 const videoPlaceholder = $('videoPlaceholder');
-const videoError     = $('videoError');
+const videoError = $('videoError');
 const videoErrorText = $('videoErrorText');
-const btnRetry       = $('btnRetry');
-const tickerTrack    = $('tickerTrack');
-const statLive       = $('statLive');
-const statUpcoming   = $('statUpcoming');
-const toast          = $('toast');
+const btnRetry = $('btnRetry');
+const tickerTrack = $('tickerTrack');
+const statLive = $('statLive');
+const statUpcoming = $('statUpcoming');
+const toast = $('toast');
 let toastTimer;
 
 // ── TOAST ──
@@ -66,13 +68,12 @@ function imgWithFallback(src, fallbackEmoji) {
 }
 
 // ── RENDER MATCH CARD ──
-// data-index maps to the rendered pool (filteredMatches or matches)
 function renderMatchCard(match, index) {
   const isLive = match.match_status === 'live';
   const servers = match.servers || [];
   const scoreHtml = isLive
-    ? `<div class="score-wrap">
-         <div class="score">${match.homeTeamScore ?? '0'}<span class="score-sep"> : </span>${match.awayTeamScore ?? '0'}</div>
+   ? `<div class="score-wrap">
+         <div class="score">${match.homeTeamScore?? '0'}<span class="score-sep"> : </span>${match.awayTeamScore?? '0'}</div>
          <div class="match-time-label">LIVE</div>
        </div>`
     : `<div class="score-wrap">
@@ -81,13 +82,13 @@ function renderMatchCard(match, index) {
        </div>`;
 
   return `
-    <div class="match-card ${isLive ? 'is-live' : ''}" data-index="${index}">
+    <div class="match-card ${isLive? 'is-live' : ''}" data-index="${index}">
       <div class="card-top">
         <div class="card-league">
-          ${match.league_logo ? `<img src="${match.league_logo}" alt="" style="width:16px;height:16px;object-fit:contain" onerror="this.style.display='none'" />` : ''}
+          ${match.league_logo? `<img src="${match.league_logo}" alt="" style="width:16px;height:16px;object-fit:contain" onerror="this.style.display='none'" />` : ''}
           ${match.league_name || 'Unknown League'}
         </div>
-        <div class="card-status ${isLive ? 'live' : 'upcoming'}">${isLive ? '● LIVE' : 'UPCOMING'}</div>
+        <div class="card-status ${isLive? 'live' : 'upcoming'}">${isLive? '● LIVE' : 'UPCOMING'}</div>
       </div>
       <div class="teams">
         <div class="team">
@@ -101,7 +102,7 @@ function renderMatchCard(match, index) {
         </div>
       </div>
       <div class="card-footer">
-        <div class="servers-count">📡 <span>${servers.length}</span> server${servers.length !== 1 ? 's' : ''}</div>
+        <div class="servers-count">📡 <span>${servers.length}</span> server${servers.length!== 1? 's' : ''}</div>
         <button class="watch-btn" data-index="${index}">▶ Watch</button>
       </div>
     </div>`;
@@ -112,10 +113,10 @@ function renderLeagueCard(league) {
   const name = (league.league_name || league.name || 'Unknown').replace(/'/g, "\\'");
   return `
     <div class="league-card" data-league="${name}">
-      ${league.league_logo ? `<img src="${league.league_logo}" alt="" style="width:36px;height:36px;object-fit:contain" onerror="this.style.display='none'" />` : '<span style="font-size:28px">🏆</span>'}
+      ${league.league_logo? `<img src="${league.league_logo}" alt="" style="width:36px;height:36px;object-fit:contain" onerror="this.style.display='none'" />` : '<span style="font-size:28px">🏆</span>'}
       <div class="league-info">
         <div class="league-name">${league.league_name || league.name || 'Unknown'}</div>
-        <div class="league-matches">${league.match_count ?? ''} matches</div>
+        <div class="league-matches">${league.match_count?? ''} matches</div>
       </div>
     </div>`;
 }
@@ -129,11 +130,33 @@ function buildTicker(matches) {
   tickerTrack.innerHTML = matches.slice(0, 20).map(m => {
     const isLive = m.match_status === 'live';
     return `<div class="ticker-item">
-      ${isLive ? '<span class="live-badge">● LIVE</span>' : ''}
-      ${m.home_team_name} <span class="score">${isLive ? `${m.homeTeamScore ?? 0} - ${m.awayTeamScore ?? 0}` : 'vs'}</span> ${m.away_team_name}
+      ${isLive? '<span class="live-badge">● LIVE</span>' : ''}
+      ${m.home_team_name} <span class="score">${isLive? `${m.homeTeamScore?? 0} - ${m.awayTeamScore?? 0}` : 'vs'}</span> ${m.away_team_name}
       <em style="font-size:10px;opacity:0.5">${m.league_name || ''}</em>
     </div>`;
   }).join('');
+}
+
+// ── CACHED FETCH ──
+async function cachedFetch(url) {
+  const now = Date.now();
+  const cached = state.cache.get(url);
+
+  if (cached && now - cached.time < 120000) {
+    return cached.data;
+  }
+
+  // Cancel previous request if still pending
+  if (state.abortController) state.abortController.abort();
+  state.abortController = new AbortController();
+
+  const res = await fetch(url, { signal: state.abortController.signal });
+  const data = await res.json();
+
+  if (!res.ok) throw new Error(data.error || 'Failed to load');
+
+  state.cache.set(url, { data, time: now });
+  return data;
 }
 
 // ── LOAD MATCHES ──
@@ -146,12 +169,10 @@ async function loadMatches(page = 1) {
 
   const params = new URLSearchParams({ status: state.view, page });
   if (state.streamType) params.append('type', state.streamType);
+  const url = `${API}/matches?${params}`;
 
   try {
-    const res = await fetch(`${API}/matches?${params}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load');
-
+    const data = await cachedFetch(url);
     const allMatches = data.matches || [];
     state.matches = allMatches;
     state.totalPages = data.pagination?.totalPages || 1;
@@ -164,7 +185,7 @@ async function loadMatches(page = 1) {
       statUpcoming.textContent = data.pagination?.total || allMatches.length;
     }
 
-    sectionTitle.textContent = state.view === 'live' ? '🔴 Live Matches' : '📅 Upcoming Matches';
+    sectionTitle.textContent = state.view === 'live'? '🔴 Live Matches' : '📅 Upcoming Matches';
 
     let toRender = allMatches;
     if (state.search) {
@@ -177,18 +198,19 @@ async function loadMatches(page = 1) {
       state.filteredMatches = toRender;
     }
 
-    matchCount.textContent = `${toRender.length} match${toRender.length !== 1 ? 'es' : ''}`;
+    matchCount.textContent = `${toRender.length} match${toRender.length!== 1? 'es' : ''}`;
 
     if (!toRender.length) {
-      matchesGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚽</div><p>No ${state.view === 'live' ? 'live' : 'upcoming'} matches right now.</p></div>`;
+      matchesGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚽</div><p>No ${state.view === 'live'? 'live' : 'upcoming'} matches right now.</p></div>`;
       return;
     }
 
     matchesGrid.innerHTML = toRender.map((m, i) => renderMatchCard(m, i)).join('');
     renderPagination();
   } catch (err) {
+    if (err.name === 'AbortError') return; // Ignore cancelled requests
     console.error(err);
-    matchesGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Failed to load matches. Check your API key or try again.</p></div>`;
+    matchesGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Failed to load matches. Try again.</p></div>`;
   }
 }
 window.loadMatches = loadMatches;
@@ -201,8 +223,7 @@ async function loadLeagues() {
   leaguesGrid.innerHTML = `<div class="skeleton-grid">${Array(8).fill('<div class="skeleton-card skeleton-league"></div>').join('')}</div>`;
 
   try {
-    const res = await fetch(`${API}/leagues`);
-    const data = await res.json();
+    const data = await cachedFetch(`${API}/leagues`);
     const leagues = data.leagues || data || [];
     if (!leagues.length) {
       leaguesGrid.innerHTML = '<div class="empty-state"><div class="empty-icon">🏆</div><p>No leagues found.</p></div>';
@@ -210,7 +231,9 @@ async function loadLeagues() {
     }
     leaguesGrid.innerHTML = leagues.map(renderLeagueCard).join('');
   } catch (err) {
-    leaguesGrid.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Failed to load leagues.</p></div>';
+    if (err.name!== 'AbortError') {
+      leaguesGrid.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Failed to load leagues.</p></div>';
+    }
   }
 }
 
@@ -218,26 +241,26 @@ async function loadLeagues() {
 function renderPagination() {
   if (state.totalPages <= 1) return;
   const btns = [];
-  btns.push(`<button class="page-btn" ${state.currentPage === 1 ? 'disabled' : ''} onclick="loadMatches(${state.currentPage - 1})">← Prev</button>`);
+  btns.push(`<button class="page-btn" ${state.currentPage === 1? 'disabled' : ''} onclick="loadMatches(${state.currentPage - 1})">← Prev</button>`);
   for (let i = 1; i <= state.totalPages; i++) {
     if (i === 1 || i === state.totalPages || Math.abs(i - state.currentPage) <= 1) {
-      btns.push(`<button class="page-btn ${i === state.currentPage ? 'active' : ''}" onclick="loadMatches(${i})">${i}</button>`);
+      btns.push(`<button class="page-btn ${i === state.currentPage? 'active' : ''}" onclick="loadMatches(${i})">${i}</button>`);
     } else if (Math.abs(i - state.currentPage) === 2) {
       btns.push(`<span style="color:var(--text-dim);padding:0 4px">…</span>`);
     }
   }
-  btns.push(`<button class="page-btn" ${state.currentPage === state.totalPages ? 'disabled' : ''} onclick="loadMatches(${state.currentPage + 1})">Next →</button>`);
+  btns.push(`<button class="page-btn" ${state.currentPage === state.totalPages? 'disabled' : ''} onclick="loadMatches(${state.currentPage + 1})">Next →</button>`);
   pagination.innerHTML = btns.join('');
 }
 
-// ── EVENT DELEGATION — Watch button & card click ──
+// ── EVENT DELEGATION ──
 matchesGrid.addEventListener('click', e => {
   const watchBtn = e.target.closest('.watch-btn');
   const card = e.target.closest('.match-card');
   const target = watchBtn || card;
   if (!target) return;
 
-  const idx = parseInt(target.dataset.index ?? card?.dataset.index);
+  const idx = parseInt(target.dataset.index?? card?.dataset.index);
   if (isNaN(idx)) return;
 
   const pool = state.filteredMatches || state.matches;
@@ -245,7 +268,6 @@ matchesGrid.addEventListener('click', e => {
   if (match) openStream(match);
 });
 
-// ── LEAGUE CARD CLICK ──
 leaguesGrid.addEventListener('click', e => {
   const card = e.target.closest('.league-card');
   if (!card) return;
@@ -260,6 +282,7 @@ function filterByLeague(leagueName) {
   searchInput.value = leagueName;
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('[data-filter="live"]').classList.add('active');
+  state.cache.clear(); // Clear cache for new filter
   loadMatches(1);
   matchesSection.scrollIntoView({ behavior: 'smooth' });
 }
@@ -270,31 +293,26 @@ function openStream(match) {
   state.currentServerIdx = 0;
 
   const isLive = match.match_status === 'live';
-  const scoreStr = isLive ? `${match.homeTeamScore ?? 0} – ${match.awayTeamScore ?? 0}` : '';
+  const scoreStr = isLive? `${match.homeTeamScore?? 0} – ${match.awayTeamScore?? 0}` : '';
 
   modalMatchInfo.innerHTML = `
     <div>
       <div class="modal-teams">${match.home_team_name} vs ${match.away_team_name}</div>
       <div class="modal-league">${match.league_name || ''}</div>
     </div>
-    ${scoreStr ? `<div class="modal-score">${scoreStr}</div>` : ''}
-    ${isLive
-      ? '<div class="card-status live">● LIVE</div>'
-      : `<div class="card-status upcoming">${formatTime(match.match_time)} EAT</div>`}
+    ${scoreStr? `<div class="modal-score">${scoreStr}</div>` : ''}
+    ${isLive? '<div class="card-status live">● LIVE</div>' : `<div class="card-status upcoming">${formatTime(match.match_time)} EAT</div>`}
   `;
 
   const servers = match.servers || [];
-  if (servers.length) {
-    serverList.innerHTML = servers.map((srv, i) => `
-      <button class="server-btn ${i === 0 ? 'active' : ''}" data-idx="${i}">
-        ${srv.name || `Server ${i + 1}`}
-        <span class="type-badge ${srv.type || 'direct'}">${srv.type || 'direct'}</span>
-      </button>`).join('');
-  } else {
-    serverList.innerHTML = '<p style="color:var(--text-dim);font-size:13px">No streams available.</p>';
-  }
+  serverList.innerHTML = servers.length
+   ? servers.map((srv, i) => `
+        <button class="server-btn ${i === 0? 'active' : ''}" data-idx="${i}">
+          ${srv.name || `Server ${i + 1}`}
+          <span class="type-badge ${srv.type || 'direct'}">${srv.type || 'direct'}</span>
+        </button>`).join('')
+    : '<p style="color:var(--text-dim);font-size:13px">No streams available.</p>';
 
-  // Server button clicks via delegation
   serverList.onclick = e => {
     const btn = e.target.closest('.server-btn');
     if (!btn) return;
@@ -323,10 +341,7 @@ function playServer(idx) {
   if (!servers[idx]) return;
 
   state.currentServerIdx = idx;
-
-  document.querySelectorAll('.server-btn').forEach((b, i) => {
-    b.classList.toggle('active', i === idx);
-  });
+  document.querySelectorAll('.server-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
 
   const server = servers[idx];
   let url = server.url;
@@ -345,8 +360,7 @@ function playServer(idx) {
   }
 
   if (type === 'drm') {
-    const parts = url.split('|');
-    url = parts[0];
+    url = url.split('|')[0];
     showToast('⚠️ DRM stream — may require extra browser permissions');
   }
 
@@ -363,7 +377,7 @@ function playServer(idx) {
     videoPlayer.src = url;
     videoPlayer.play().catch(() => {});
   } else {
-    showStreamError('HLS not supported in this browser. Try a different browser.');
+    showStreamError('HLS not supported in this browser.');
   }
 
   videoPlayer.onerror = () => showStreamError(`Server ${idx + 1} unavailable.`);
@@ -406,6 +420,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     state.currentPage = 1;
     state.search = '';
     searchInput.value = '';
+    state.cache.clear(); // Clear cache on view change
     if (state.view === 'leagues') loadLeagues();
     else loadMatches(1);
   });
@@ -417,7 +432,8 @@ document.querySelectorAll('.filter-chip').forEach(chip => {
     document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     state.streamType = chip.dataset.type;
-    if (state.view !== 'leagues') loadMatches(1);
+    state.cache.clear();
+    if (state.view!== 'leagues') loadMatches(1);
   });
 });
 
@@ -427,7 +443,7 @@ searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     state.search = searchInput.value.trim();
-    if (state.view !== 'leagues') {
+    if (state.view!== 'leagues') {
       if (state.search) {
         const q = state.search.toLowerCase();
         const filtered = state.matches.filter(m =>
@@ -436,32 +452,33 @@ searchInput.addEventListener('input', () => {
           m.league_name?.toLowerCase().includes(q)
         );
         state.filteredMatches = filtered;
-        matchCount.textContent = `${filtered.length} match${filtered.length !== 1 ? 'es' : ''}`;
+        matchCount.textContent = `${filtered.length} match${filtered.length!== 1? 'es' : ''}`;
         matchesGrid.innerHTML = filtered.length
-          ? filtered.map((m, i) => renderMatchCard(m, i)).join('')
+         ? filtered.map((m, i) => renderMatchCard(m, i)).join('')
           : `<div class="empty-state"><div class="empty-icon">🔍</div><p>No results for "${state.search}"</p></div>`;
       } else {
         state.filteredMatches = null;
         matchesGrid.innerHTML = state.matches.map((m, i) => renderMatchCard(m, i)).join('');
-        matchCount.textContent = `${state.matches.length} match${state.matches.length !== 1 ? 'es' : ''}`;
+        matchCount.textContent = `${state.matches.length} match${state.matches.length!== 1? 'es' : ''}`;
       }
     }
   }, 300);
 });
 
-// ── AUTO REFRESH every 60s (only when modal is closed) ──
+// ── SMART AUTO REFRESH ──
+// Only refreshes every 2 min when tab is active and modal is closed
 setInterval(() => {
-  if (state.view === 'live' && streamModal.classList.contains('hidden')) {
+  if (!document.hidden && state.view === 'live' && streamModal.classList.contains('hidden')) {
+    state.cache.clear(); // Force fresh data
     loadMatches(state.currentPage);
   }
-}, 60000);
+}, 120000);
 
 // ── INIT ──
 (async () => {
   await loadMatches(1);
   try {
-    const res = await fetch(`${API}/matches?status=vs&page=1`);
-    const data = await res.json();
+    const data = await cachedFetch(`${API}/matches?status=vs&page=1`);
     statUpcoming.textContent = data.pagination?.total || (data.matches?.length || 0);
   } catch {}
 })();
