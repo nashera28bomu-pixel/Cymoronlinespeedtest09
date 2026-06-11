@@ -22,6 +22,7 @@
       </a>
       <nav class="nav-pills">
         <button class="nav-btn active" data-filter="live">🔴 Live</button>
+        <button class="nav-btn" data-filter="worldcup">🏆 World Cup</button>
         <button class="nav-btn" data-filter="vs">📅 Upcoming</button>
         <button class="nav-btn" data-filter="leagues">🏆 Leagues</button>
       </nav>
@@ -82,7 +83,12 @@
       </div>
       <div class="matches-grid" id="matchesGrid">
         <div class="skeleton-grid">
-          ${Array(6).fill('<div class="skeleton-card"></div>').join('')}
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
         </div>
       </div>
       <div class="pagination" id="pagination"></div>
@@ -95,7 +101,14 @@
       </div>
       <div class="leagues-grid" id="leaguesGrid">
         <div class="skeleton-grid">
-          ${Array(8).fill('<div class="skeleton-card skeleton-league"></div>').join('')}
+          <div class="skeleton-card skeleton-league"></div>
+          <div class="skeleton-card skeleton-league"></div>
+          <div class="skeleton-card skeleton-league"></div>
+          <div class="skeleton-card skeleton-league"></div>
+          <div class="skeleton-card skeleton-league"></div>
+          <div class="skeleton-card skeleton-league"></div>
+          <div class="skeleton-card skeleton-league"></div>
+          <div class="skeleton-card skeleton-league"></div>
         </div>
       </div>
     </section>
@@ -135,7 +148,7 @@
   <footer class="footer">
     <div class="footer-inner">
       <span class="footer-brand">⚽ Cymor Football Live</span>
-      <span class="footer-copy">Built by <strong>Cymor Tech Services</strong> · Streams via RapidAPI</span>
+      <span class="footer-copy">Built by <strong>Cymor Tech Services</strong> · Legendary Smiley Cymor😎</span>
     </div>
   </footer>
 
