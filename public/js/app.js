@@ -16,8 +16,9 @@ const state = {
   currentMatch: null,
   currentServerIdx: 0,
   hls: null,
-  cache: new Map(), // 2-min cache for API responses
+  cache: new Map(),
   abortController: null,
+  prevScores: new Map(), // Track scores for goal notifications
 };
 
 // ── ELEMENT REFS ──
@@ -47,7 +48,7 @@ const toast = $('toast');
 let toastTimer;
 
 // ── TOAST ──
-function showToast(msg, duration = 3000) {
+function showToast(msg, duration = 4000) {
   toast.textContent = msg;
   toast.classList.remove('hidden');
   clearTimeout(toastTimer);
@@ -137,22 +138,35 @@ function buildTicker(matches) {
   }).join('');
 }
 
+// ── CHECK FOR GOALS ──
+function checkForGoals(matches) {
+  matches.forEach(m => {
+    if (m.match_status!== 'live') return;
+    const key = `${m.home_team_name}_${m.away_team_name}`;
+    const prev = state.prevScores.get(key);
+    const curr = `${m.homeTeamScore?? 0}-${m.awayTeamScore?? 0}`;
+
+    if (prev && prev!== curr) {
+      const [h, a] = curr.split('-');
+      const [ph, pa] = prev.split('-');
+      if (h > ph) showToast(`⚽ GOAL! ${m.home_team_name} ${curr} ${m.away_team_name}`);
+      if (a > pa) showToast(`⚽ GOAL! ${m.home_team_name} ${curr} ${m.away_team_name}`);
+    }
+    state.prevScores.set(key, curr);
+  });
+}
+
 // ── CACHED FETCH ──
 async function cachedFetch(url) {
   const now = Date.now();
   const cached = state.cache.get(url);
+  if (cached && now - cached.time < 120000) return cached.data;
 
-  if (cached && now - cached.time < 120000) {
-    return cached.data;
-  }
-
-  // Cancel previous request if still pending
   if (state.abortController) state.abortController.abort();
   state.abortController = new AbortController();
 
   const res = await fetch(url, { signal: state.abortController.signal });
   const data = await res.json();
-
   if (!res.ok) throw new Error(data.error || 'Failed to load');
 
   state.cache.set(url, { data, time: now });
@@ -167,25 +181,40 @@ async function loadMatches(page = 1) {
   pagination.innerHTML = '';
   state.filteredMatches = null;
 
-  const params = new URLSearchParams({ status: state.view, page });
+  const params = new URLSearchParams({ status: state.view === 'worldcup'? 'live' : state.view, page });
   if (state.streamType) params.append('type', state.streamType);
   const url = `${API}/matches?${params}`;
 
   try {
     const data = await cachedFetch(url);
-    const allMatches = data.matches || [];
+    let allMatches = data.matches || [];
+
+    // World Cup filter
+    if (state.view === 'worldcup') {
+      allMatches = allMatches.filter(m =>
+        m.league_name?.toLowerCase().includes('world cup') ||
+        m.league_name?.toLowerCase().includes('fifa')
+      );
+    }
+
+    // Check for goals before updating state
+    if (state.view === 'live' || state.view === 'worldcup') checkForGoals(allMatches);
+
     state.matches = allMatches;
     state.totalPages = data.pagination?.totalPages || 1;
     state.currentPage = page;
 
-    if (state.view === 'live') {
-      statLive.textContent = data.pagination?.total || allMatches.length;
+    if (state.view === 'live' || state.view === 'worldcup') {
+      statLive.textContent = allMatches.length;
       buildTicker(allMatches);
     } else if (state.view === 'vs') {
       statUpcoming.textContent = data.pagination?.total || allMatches.length;
     }
 
-    sectionTitle.textContent = state.view === 'live'? '🔴 Live Matches' : '📅 Upcoming Matches';
+    sectionTitle.textContent =
+      state.view === 'live'? '🔴 Live Matches' :
+      state.view === 'worldcup'? '🏆 FIFA World Cup' :
+      '📅 Upcoming Matches';
 
     let toRender = allMatches;
     if (state.search) {
@@ -201,14 +230,14 @@ async function loadMatches(page = 1) {
     matchCount.textContent = `${toRender.length} match${toRender.length!== 1? 'es' : ''}`;
 
     if (!toRender.length) {
-      matchesGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚽</div><p>No ${state.view === 'live'? 'live' : 'upcoming'} matches right now.</p></div>`;
+      matchesGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚽</div><p>No ${state.view === 'worldcup'? 'World Cup' : state.view === 'live'? 'live' : 'upcoming'} matches right now.</p></div>`;
       return;
     }
 
     matchesGrid.innerHTML = toRender.map((m, i) => renderMatchCard(m, i)).join('');
     renderPagination();
   } catch (err) {
-    if (err.name === 'AbortError') return; // Ignore cancelled requests
+    if (err.name === 'AbortError') return;
     console.error(err);
     matchesGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Failed to load matches. Try again.</p></div>`;
   }
@@ -282,7 +311,7 @@ function filterByLeague(leagueName) {
   searchInput.value = leagueName;
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('[data-filter="live"]').classList.add('active');
-  state.cache.clear(); // Clear cache for new filter
+  state.cache.clear();
   loadMatches(1);
   matchesSection.scrollIntoView({ behavior: 'smooth' });
 }
@@ -420,7 +449,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     state.currentPage = 1;
     state.search = '';
     searchInput.value = '';
-    state.cache.clear(); // Clear cache on view change
+    state.cache.clear();
     if (state.view === 'leagues') loadLeagues();
     else loadMatches(1);
   });
@@ -466,13 +495,12 @@ searchInput.addEventListener('input', () => {
 });
 
 // ── SMART AUTO REFRESH ──
-// Only refreshes every 2 min when tab is active and modal is closed
 setInterval(() => {
-  if (!document.hidden && state.view === 'live' && streamModal.classList.contains('hidden')) {
-    state.cache.clear(); // Force fresh data
+  if (!document.hidden && (state.view === 'live' || state.view === 'worldcup') && streamModal.classList.contains('hidden')) {
+    state.cache.clear();
     loadMatches(state.currentPage);
   }
-}, 120000);
+}, 30000); // 30s for faster goal detection
 
 // ── INIT ──
 (async () => {
