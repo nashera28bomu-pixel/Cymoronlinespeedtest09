@@ -73,7 +73,7 @@ function renderMatchCard(match, index) {
   const isLive = match.match_status === 'live';
   const servers = match.servers || [];
   const scoreHtml = isLive
-   ? `<div class="score-wrap">
+  ? `<div class="score-wrap">
          <div class="score">${match.homeTeamScore?? '0'}<span class="score-sep"> : </span>${match.awayTeamScore?? '0'}</div>
          <div class="match-time-label">LIVE</div>
        </div>`
@@ -181,7 +181,7 @@ async function loadMatches(page = 1) {
   pagination.innerHTML = '';
   state.filteredMatches = null;
 
-  const params = new URLSearchParams({ status: state.view === 'worldcup'? 'live' : state.view, page });
+  const params = new URLSearchParams({ status: 'live', page });
   if (state.streamType) params.append('type', state.streamType);
   const url = `${API}/matches?${params}`;
 
@@ -189,12 +189,15 @@ async function loadMatches(page = 1) {
     const data = await cachedFetch(url);
     let allMatches = data.matches || [];
 
-    // World Cup filter
+    // World Cup filter - includes live + today's WC matches
     if (state.view === 'worldcup') {
-      allMatches = allMatches.filter(m =>
-        m.league_name?.toLowerCase().includes('world cup') ||
-        m.league_name?.toLowerCase().includes('fifa')
-      );
+      const today = new Date().toISOString().split('T')[0];
+      allMatches = allMatches.filter(m => {
+        const isWC = m.league_name?.toLowerCase().includes('world cup') ||
+                     m.league_name?.toLowerCase().includes('fifa');
+        const matchDate = new Date(parseInt(m.match_time) * 1000).toISOString().split('T')[0];
+        return isWC && (m.match_status === 'live' || matchDate === today);
+      });
     }
 
     // Check for goals before updating state
@@ -335,7 +338,7 @@ function openStream(match) {
 
   const servers = match.servers || [];
   serverList.innerHTML = servers.length
-   ? servers.map((srv, i) => `
+  ? servers.map((srv, i) => `
         <button class="server-btn ${i === 0? 'active' : ''}" data-idx="${i}">
           ${srv.name || `Server ${i + 1}`}
           <span class="type-badge ${srv.type || 'direct'}">${srv.type || 'direct'}</span>
@@ -483,7 +486,7 @@ searchInput.addEventListener('input', () => {
         state.filteredMatches = filtered;
         matchCount.textContent = `${filtered.length} match${filtered.length!== 1? 'es' : ''}`;
         matchesGrid.innerHTML = filtered.length
-         ? filtered.map((m, i) => renderMatchCard(m, i)).join('')
+        ? filtered.map((m, i) => renderMatchCard(m, i)).join('')
           : `<div class="empty-state"><div class="empty-icon">🔍</div><p>No results for "${state.search}"</p></div>`;
       } else {
         state.filteredMatches = null;
@@ -500,7 +503,7 @@ setInterval(() => {
     state.cache.clear();
     loadMatches(state.currentPage);
   }
-}, 30000); // 30s for faster goal detection
+}, 30000);
 
 // ── INIT ──
 (async () => {
