@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cymor Football Live</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0a0f1e" />
+  <meta name="description" content="Watch live football matches from 50+ leagues worldwide. Free streaming on Cymor Football Live." />
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-inner">
+      <a class="logo" href="/">
+        <span class="logo-icon">⚽</span>
+        <span class="logo-text">CYMOR <span class="logo-accent">FOOTBALL</span> LIVE</span>
+      </a>
+      <nav class="nav-pills">
+        <button class="nav-btn active" data-filter="live">🔴 Live</button>
+        <button class="nav-btn" data-filter="vs">📅 Upcoming</button>
+        <button class="nav-btn" data-filter="leagues">🏆 Leagues</button>
+      </nav>
+      <div class="header-right">
+        <div class="live-pulse" id="livePulse">
+          <span class="pulse-dot"></span>
+          <span class="pulse-label">LIVE</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- TICKER -->
+  <div class="ticker-wrap" id="tickerWrap">
+    <div class="ticker-track" id="tickerTrack">
+      <span class="ticker-loading">Loading live scores...</span>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <main class="main">
+
+    <!-- HERO SECTION -->
+    <section class="hero" id="heroSection">
+      <div class="hero-bg"></div>
+      <div class="hero-content">
+        <h1 class="hero-title">Watch Football.<br/><span class="hero-accent">Live. Free.</span></h1>
+        <p class="hero-sub">50+ leagues · Up to 13 streams per match · No subscription needed</p>
+        <div class="hero-stats" id="heroStats">
+          <div class="stat-box"><span class="stat-num" id="statLive">–</span><span class="stat-label">Live Now</span></div>
+          <div class="stat-box"><span class="stat-num" id="statUpcoming">–</span><span class="stat-label">Upcoming</span></div>
+          <div class="stat-box"><span class="stat-num">50+</span><span class="stat-label">Leagues</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FILTER BAR -->
+    <section class="filter-bar" id="filterBar">
+      <div class="filter-inner">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input class="search-input" id="searchInput" type="text" placeholder="Search team or league..." />
+        </div>
+        <div class="stream-filters">
+          <button class="filter-chip active" data-type="">All Streams</button>
+          <button class="filter-chip" data-type="direct">⚡ Direct</button>
+          <button class="filter-chip" data-type="referer">🔗 Referer</button>
+          <button class="filter-chip" data-type="drm">🔒 DRM</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MATCHES GRID -->
+    <section class="section" id="matchesSection">
+      <div class="section-header">
+        <h2 class="section-title" id="sectionTitle">🔴 Live Matches</h2>
+        <span class="match-count" id="matchCount"></span>
+      </div>
+      <div class="matches-grid" id="matchesGrid">
+        <div class="skeleton-grid">
+          ${Array(6).fill('<div class="skeleton-card"></div>').join('')}
+        </div>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </section>
+
+    <!-- LEAGUES SECTION (hidden by default) -->
+    <section class="section hidden" id="leaguesSection">
+      <div class="section-header">
+        <h2 class="section-title">🏆 Available Leagues</h2>
+      </div>
+      <div class="leagues-grid" id="leaguesGrid">
+        <div class="skeleton-grid">
+          ${Array(8).fill('<div class="skeleton-card skeleton-league"></div>').join('')}
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- STREAM MODAL -->
+  <div class="modal-overlay hidden" id="streamModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-match-info" id="modalMatchInfo"></div>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="video-wrap">
+          <video id="videoPlayer" controls playsinline crossorigin="anonymous"></video>
+          <div class="video-placeholder hidden" id="videoPlaceholder">
+            <div class="placeholder-icon">📺</div>
+            <p class="placeholder-text">Select a server to start watching</p>
+          </div>
+          <div class="video-error hidden" id="videoError">
+            <div class="error-icon">⚠️</div>
+            <p class="error-text" id="videoErrorText">Stream unavailable. Try another server.</p>
+            <button class="btn-retry" id="btnRetry">Try Next Server</button>
+          </div>
+        </div>
+        <div class="server-list" id="serverList"></div>
+        <div class="match-meta" id="matchMeta"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast hidden" id="toast"></div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-brand">⚽ Cymor Football Live</span>
+      <span class="footer-copy">Built by <strong>Cymor Tech Services</strong> · Streams via RapidAPI</span>
+    </div>
+  </footer>
+
+  <!-- HLS.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.8/hls.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
